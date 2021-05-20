@@ -145,7 +145,7 @@ class ObjectDetector:
             ar = width / float(height)
             
             if width < height:
-                angle = 90 - angle
+                angle = 1.5708 - angle
             else:
                 angle = -angle
 
