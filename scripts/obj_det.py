@@ -5,14 +5,30 @@ import numpy as np
  
 # Load the image
 # img = cv.imread("input_img.jpg")
-img = cv.imread("coke_ball.png")
+image = cv.imread("tape2.png")
+
+result = image.copy()
+image = cv.cvtColor(image, cv.COLOR_BGR2HSV)
+
+lower = np.array([155,50,50])
+upper = np.array([179,255,255])
+mask1 = cv.inRange(image, lower, upper)
+
+lower = np.array([0,150,70])
+upper = np.array([179,255,255])
+mask2 = cv.inRange(image, lower, upper)
+
+mask = mask1+mask2
+
+img = cv.bitwise_and(result, result, mask=mask)
+# ---------- experimental (END) -----------
  
 # Was the image there?
-if img is None:
-  print("Error: File not found")
-  exit(0)
+# if img is None:
+#   print("Error: File not found")
+#   exit(0)
  
-cv.imshow('Input Image', img)
+# cv.imshow('Input Image', img)
  
 # Convert image to grayscale
 gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
@@ -27,7 +43,7 @@ for i, c in enumerate(contours):
  
   # Calculate the area of each contour
   area = cv.contourArea(c)
-  print(area)
+  # print(area)
  
   # Ignore contours that are too small or too large
   if area < 2000 or 100000 < area:
@@ -37,6 +53,7 @@ for i, c in enumerate(contours):
   # (center(x, y), (width, height), angle of rotation) = cv2.minAreaRect(c)
   rect = cv.minAreaRect(c)
   box = cv.boxPoints(rect)
+  print(box)
   box = np.int0(box)
  
   # Retrieve the key parameters of the rotated bounding box
@@ -44,14 +61,24 @@ for i, c in enumerate(contours):
   width = int(rect[1][0])
   height = int(rect[1][1])
   angle = int(rect[2])
- 
-     
+  
+  shape = "unidentified"
+  ar = width / float(height)
+  # shape = "square" if ar >= 0.95 and ar <= 1.05 else "rectangle"
+   
   if width < height:
     angle = 90 - angle
   else:
     angle = -angle
+
+  if ar >= 0.95 and ar <= 1.05:
+    shape = "square"
+    angle = int(0)
+  else:
+    shape = "rectangle"
          
-  label = " Angle: " + str(angle) + " deg,"+str(center)
+  # label = " Angle: " + str(angle) + " deg,"+str(center)
+  label = " Angle: " + str(angle) + " deg,"+str(shape)
   textbox = cv.rectangle(img, (center[0]-35, center[1]-25), 
     (center[0] + 295, center[1] + 10), (255,255,255), -1)
   cv.putText(img, label, (center[0]-50, center[1]), 
