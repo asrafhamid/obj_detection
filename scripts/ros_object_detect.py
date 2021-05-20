@@ -5,6 +5,8 @@ import rospy
 import numpy as np
 import cv2
 from sensor_msgs.msg import Image
+#TODO: remove redundant import: floatList, CvBridgeError & PointStamped
+# BTW you should use CvBridgeError when self.bridge.imgmsg_to_cv2(), example is here: https://www.programcreek.com/python/example/105263/cv_bridge.CvBridgeError
 from obj_detection.msg import floatList
 from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import PointStamped, PoseStamped
@@ -58,6 +60,7 @@ class ObjectDetector:
         self.xypoints = np.array([0,0,0,0,0,0,0,0], dtype = np.int64)
         self.clr_list = []
 
+        # TODO: use message_filters to subscribe two topics in one callback -> https://www.programcreek.com/python/example/116910/message_filters.ApproximateTimeSynchronizer
         self.sub_rgb = rospy.Subscriber('/camera/rgb/image_rect_color', Image, self.rgb_callback)
         # self.sub_rgb = rospy.Subscriber('/camera/color/image_raw', Image, self.rgb_callback)
         self.sub_depth = rospy.Subscriber('/camera/depth/image_rect_raw', Image, self.d_callback)
@@ -70,9 +73,11 @@ class ObjectDetector:
 
         if self.clr_list:
             for clr in self.clr_list:
+                # TODO: Difference between detect_color & detect_object
                 # self.detect_color(clr)
                 self.detect_object(clr)
             
+            # TODO: why only self.clr_list[0]
             self.pub_xyz(self.clr_list[0])
 
 
@@ -84,6 +89,7 @@ class ObjectDetector:
         self.clr_list.append(c_obj)
 
 
+    # TODO: redundant function?
     def detect_color(self,color_obj):
         frame = self.rgb_img
 
@@ -114,6 +120,8 @@ class ObjectDetector:
         frame = self.rgb_img
 
         img = color_obj.process_color(frame)
+
+        # TODO: remove this if not using
         color = color_obj.color
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -125,6 +133,7 @@ class ObjectDetector:
             area = cv2.contourArea(c)
             # print(area)
             
+            # TODO: if area < 1000 or area > 50000:
             if area < 1000 or 50000 < area:
                 continue
             
@@ -169,6 +178,7 @@ class ObjectDetector:
 
             self.calc_obj_pos(color_obj)
             
+        #TODO: punlish as a ROS-image
         cv2.imshow('Output Image', img)
         cv2.waitKey(1)
 
@@ -208,6 +218,7 @@ class ObjectDetector:
         self.pub.publish(posestamp)
 
 
+# TODO: remove this if not using
 def main():
     pass
 
@@ -232,10 +243,13 @@ if __name__=='__main__':
         red = ColorObj("red",low_r,high_r,low_c,high_c)
 
         obj_det = ObjectDetector()
+
+        # TODO: only can detect red colour object?
         obj_det.add_color_obj(red)
 
         rospy.spin()
 
+        # TODO: remove this if not using
         # main()
     except rospy.ROSInterruptException:
         pass
