@@ -8,7 +8,6 @@ from sensor_msgs.msg import Image
 from obj_detection.msg import floatList
 from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import PointStamped, PoseStamped
-from tf.transformations import quaternion_from_euler
 import imutils
 import math
 
@@ -150,7 +149,7 @@ class ObjectDetector:
             else:
                 angle = -angle
 
-            if ar >= 0.95 and ar <= 1.05:
+            if ar >= 0.85 and ar <= 1.15:
                 shape = "square"
                 angle = int(0)
             else:
@@ -166,7 +165,7 @@ class ObjectDetector:
 
             self.xypoints[0] = center[0]
             self.xypoints[1] = center[1]
-            self.quaternion = quaternion_from_euler(0, 0, angle)
+            self.angle= angle
 
             self.calc_obj_pos(color_obj)
             
@@ -201,10 +200,10 @@ class ObjectDetector:
         posestamp = PoseStamped()
         posestamp.header.frame_id= 'camera_depth_optical_frame'
         posestamp.header.stamp= rospy.Time(0)
-        posestamp.position.x = clr.xyz[0]
-        posestamp.position.y = clr.xyz[1]
-        posestamp.position.z = clr.xyz[2]
-        posestamp.orientation = self.quaternion
+        posestamp.pose.position.x = clr.xyz[0]
+        posestamp.pose.position.y = clr.xyz[1]
+        posestamp.pose.position.z = clr.xyz[2]
+        posestamp.pose.orientation.w = self.angle
 
         self.pub.publish(posestamp)
 
