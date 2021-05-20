@@ -7,8 +7,10 @@ import cv2
 from sensor_msgs.msg import Image
 from obj_detection.msg import floatList
 from cv_bridge import CvBridge, CvBridgeError
-from geometry_msgs.msg import PointStamped
-import imutils 
+from geometry_msgs.msg import PointStamped, PoseStamped
+from tf.transformations import quaternion_from_euler
+import imutils
+import math
 
 class ColorObj:
     def __init__(self,name,low_r=np.array([0,0,0],np.uint8),high_r=np.array([0,0,0],np.uint8),low_c=None,high_c=None):
@@ -61,7 +63,7 @@ class ObjectDetector:
         # self.sub_rgb = rospy.Subscriber('/camera/color/image_raw', Image, self.rgb_callback)
         self.sub_depth = rospy.Subscriber('/camera/depth/image_rect_raw', Image, self.d_callback)
 
-        self.pub = rospy.Publisher('/camera/object_track', PointStamped, queue_size = 1)
+        self.pub = rospy.Publisher('/camera/object_track', PoseStamped, queue_size = 1)
 
     
     def rgb_callback(self,rgb_msg):
@@ -122,7 +124,7 @@ class ObjectDetector:
         for i, c in enumerate(contours):
  
             area = cv2.contourArea(c)
-            print(area)
+            # print(area)
             
             if area < 1000 or 50000 < area:
                 continue
@@ -138,6 +140,7 @@ class ObjectDetector:
             width = int(rect[1][0])
             height = int(rect[1][1])
             angle = int(rect[2])
+            angle = math.radians(angle)
             
             shape = "unidentified"
             ar = width / float(height)
@@ -163,6 +166,7 @@ class ObjectDetector:
 
             self.xypoints[0] = center[0]
             self.xypoints[1] = center[1]
+            self.quaternion = quaternion_from_euler(0, 0, angle)
 
             self.calc_obj_pos(color_obj)
             
@@ -194,14 +198,15 @@ class ObjectDetector:
 
     def pub_xyz(self,clr):
 
-        pointstamp = PointStamped()
-        pointstamp.header.frame_id= 'camera_depth_optical_frame'
-        pointstamp.header.stamp= rospy.Time(0)
-        pointstamp.point.x = clr.xyz[0]
-        pointstamp.point.y = clr.xyz[1]
-        pointstamp.point.z = clr.xyz[2]
+        posestamp = PoseStamped()
+        posestamp.header.frame_id= 'camera_depth_optical_frame'
+        posestamp.header.stamp= rospy.Time(0)
+        posestamp.position.x = clr.xyz[0]
+        posestamp.position.y = clr.xyz[1]
+        posestamp.position.z = clr.xyz[2]
+        posestamp.orientation = self.quaternion
 
-        self.pub.publish(pointstamp)
+        self.pub.publish(posestamp)
 
 
 def main():

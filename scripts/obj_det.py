@@ -2,10 +2,11 @@
 import cv2 as cv
 from math import atan2, cos, sin, sqrt, pi
 import numpy as np
+import math
  
 # Load the image
 # img = cv.imread("input_img.jpg")
-image = cv.imread("tape2.png")
+image = cv.imread("../images/tape2.png")
 
 result = image.copy()
 image = cv.cvtColor(image, cv.COLOR_BGR2HSV)
@@ -71,9 +72,11 @@ for i, c in enumerate(contours):
   else:
     angle = -angle
 
+  angle = math.radians(angle)
+
   if ar >= 0.95 and ar <= 1.05:
     shape = "square"
-    angle = int(0)
+    angle = 0
   else:
     shape = "rectangle"
          
@@ -85,9 +88,9 @@ for i, c in enumerate(contours):
     cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 1, cv.LINE_AA)
   cv.drawContours(img,[box],0,(0,0,255),2)
  
-cv.imshow('Output Image', img)
-cv.waitKey(0)
-cv.destroyAllWindows()
+# cv.imshow('Output Image', img)
+# cv.waitKey(0)
+# cv.destroyAllWindows()
   
 # Save the output image to the current directory
-cv.imwrite("min_area_rec_output.jpg", img)
+cv.imwrite("../images/min_area_rec_output.jpg", img)
