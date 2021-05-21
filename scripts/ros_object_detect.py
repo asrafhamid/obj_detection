@@ -5,9 +5,8 @@ import rospy
 import numpy as np
 import cv2
 from sensor_msgs.msg import Image
-#TODO: remove redundant import: floatList, CvBridgeError & PointStamped
-# BTW you should use CvBridgeError when self.bridge.imgmsg_to_cv2(), example is here: https://www.programcreek.com/python/example/105263/cv_bridge.CvBridgeError
-from obj_detection.msg import floatList
+import message_filters
+from message_filters import Subscriber
 from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import PointStamped, PoseStamped
 import imutils
@@ -60,73 +59,50 @@ class ObjectDetector:
         self.xypoints = np.array([0,0,0,0,0,0,0,0], dtype = np.int64)
         self.clr_list = []
 
-        # TODO: use message_filters to subscribe two topics in one callback -> https://www.programcreek.com/python/example/116910/message_filters.ApproximateTimeSynchronizer
-        self.sub_rgb = rospy.Subscriber('/camera/rgb/image_rect_color', Image, self.rgb_callback)
+        self.sub_rgb = Subscriber('/camera/rgb/image_rect_color', Image)
         # self.sub_rgb = rospy.Subscriber('/camera/color/image_raw', Image, self.rgb_callback)
-        self.sub_depth = rospy.Subscriber('/camera/depth/image_rect_raw', Image, self.d_callback)
+        self.sub_depth = Subscriber('/camera/depth/image_rect_raw', Image)
+
+        self.sub = message_filters.ApproximateTimeSynchronizer([self.sub_rgb, self.sub_depth], queue_size=10, slop=0.5)
+        self.sub.registerCallback(self.callback)
 
         self.pub = rospy.Publisher('/camera/object_track', PoseStamped, queue_size = 1)
+        self.pub_detect = rospy.Publisher('/camera/object_detect', Image, queue_size = 1)
 
+
+    def callback(self,img,depth):
+        try:
+            self.depth_img = self.bridge.imgmsg_to_cv2(depth, desired_encoding="passthrough")
+            self.rgb_img = self.bridge.imgmsg_to_cv2(img, "bgr8")
+
+            if self.clr_list:
+                for clr in self.clr_list:
+                    # create a rectangle over object, sets obj position and orientation
+                    self.detect_object(clr)
+                
+                # TODO: why only self.clr_list[0]
+                self.pub_xyz(self.clr_list[0])
+
+        except CvBridgeError as e:
+                print(e)
     
-    def rgb_callback(self,rgb_msg):
-        self.rgb_img = self.bridge.imgmsg_to_cv2(rgb_msg, "bgr8")
 
-        if self.clr_list:
-            for clr in self.clr_list:
-                # TODO: Difference between detect_color & detect_object
-                # self.detect_color(clr)
-                self.detect_object(clr)
-            
-            # TODO: why only self.clr_list[0]
-            self.pub_xyz(self.clr_list[0])
-
-
-    def d_callback(self,msg):
-        self.depth_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
-
-    
     def add_color_obj(self,c_obj):
         self.clr_list.append(c_obj)
 
-
-    # TODO: redundant function?
-    def detect_color(self,color_obj):
-        frame = self.rgb_img
-
-        res_r = color_obj.process_color(frame)
-        color = color_obj.color
-        
-        cnts_c   = cv2.findContours(color.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cnts_c   = imutils.grab_contours(cnts_c)
-        
-        center_c = None
-        if len(cnts_c) > 0:
-        
-            c_c = max(cnts_c, key=cv2.contourArea)
-            M_c = cv2.moments(c_c)
-        
-            center_c = (int(M_c["m10"] / M_c["m00"]), int(M_c["m01"] / M_c["m00"]))
-            cv2.circle(frame, center_c, 5, (0,0,0), -1)
-
-            self.xypoints[0] = center_c[0]
-            self.xypoints[1] = center_c[1]
-
-            self.calc_obj_pos(color_obj)
-
-        # cv2.imshow("Color Tracking",frame)
-        # cv2.waitKey(1)
 
     def detect_object(self,color_obj):
         frame = self.rgb_img
 
         img = color_obj.process_color(frame)
 
-        # TODO: remove this if not using
-        color = color_obj.color
-
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, bw = cv2.threshold(gray, 50, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-        contours, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+
+        if cv2.__version__ == "3.2.0":
+            _,contours, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        else:
+            contours, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
         for i, c in enumerate(contours):
  
@@ -160,7 +136,7 @@ class ObjectDetector:
 
             if ar >= 0.85 and ar <= 1.15:
                 shape = "square"
-                angle = int(0)
+                angle = 1.5708
             else:
                 shape = "rectangle"
                     
@@ -178,7 +154,11 @@ class ObjectDetector:
 
             self.calc_obj_pos(color_obj)
             
-        #TODO: punlish as a ROS-image
+        try:
+            self.pub_detect.publish(self.bridge.cv2_to_imgmsg(img, "bgr8"))
+        except CvBridgeError as e:
+            print(e)
+
         cv2.imshow('Output Image', img)
         cv2.waitKey(1)
 
@@ -218,10 +198,6 @@ class ObjectDetector:
         self.pub.publish(posestamp)
 
 
-# TODO: remove this if not using
-def main():
-    pass
-
         
 if __name__=='__main__':
     try:
@@ -249,8 +225,6 @@ if __name__=='__main__':
 
         rospy.spin()
 
-        # TODO: remove this if not using
-        # main()
     except rospy.ROSInterruptException:
         pass
 
