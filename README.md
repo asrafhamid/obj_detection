@@ -94,3 +94,4 @@ Please report bugs and request features using the [Issue Tracker](https://github
 
 [ROS]: http://www.ros.org
 [geometry_msgs/PoseStamped]: http://docs.ros.org/en/melodic/api/geometry_msgs/html/msg/PoseStamped.html
+[sensor_msgs/Image]:https://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/Image.html
