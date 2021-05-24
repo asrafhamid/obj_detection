@@ -59,8 +59,8 @@ class ObjectDetector:
         self.xypoints = np.array([0,0,0,0,0,0,0,0], dtype = np.int64)
         self.clr_list = []
 
-        self.sub_rgb = Subscriber('/camera/rgb/image_rect_color', Image)
-        # self.sub_rgb = rospy.Subscriber('/camera/color/image_raw', Image, self.rgb_callback)
+        # self.sub_rgb = Subscriber('/camera/rgb/image_rect_color', Image)
+        self.sub_rgb = Subscriber('/camera/color/image_raw', Image)
         self.sub_depth = Subscriber('/camera/depth/image_rect_raw', Image)
 
         self.sub = message_filters.ApproximateTimeSynchronizer([self.sub_rgb, self.sub_depth], queue_size=10, slop=0.5)
