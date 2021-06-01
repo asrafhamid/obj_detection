@@ -8,7 +8,9 @@ from sensor_msgs.msg import Image
 import message_filters
 from message_filters import Subscriber
 from cv_bridge import CvBridge, CvBridgeError
-from geometry_msgs.msg import PointStamped, PoseStamped
+from geometry_msgs.msg import PointStamped, PoseStamped, Pose
+from geometry_msgs.msg import PoseArray
+from obj_detection.srv import GetObject
 import imutils
 import math
 
@@ -20,8 +22,10 @@ class ColorObj:
         self.low_c = low_c
         self.high_c = high_c
 
-        self.xyz = np.array([0.0,0.0,0.0])
+        # self.xyz = np.array([0.0,0.0,0.0])
         self.name = name
+        self.color = None
+        self.poses = PoseArray()
 
 
     def set_range(self,low_r,high_r):
@@ -40,13 +44,12 @@ class ColorObj:
         if self.low_c is not None:
             color = cv2.inRange(hsv, self.low_c, self.high_c)
             self.color = self.color + color
+            # self.color = cv2.erode(self.color, None, iterations=2)
+            # self.color = cv2.dilate(self.color, None, iterations=2)
 
         res_r = cv2.bitwise_and(frame,frame, mask= self.color)
         # cv2.imshow('Red',res_r)
         
-        self.color = cv2.erode(self.color, None, iterations=2)
-        self.color = cv2.dilate(self.color, None, iterations=2)
-
         return res_r
 
 
@@ -54,13 +57,14 @@ class ObjectDetector:
     def __init__(self):
 
         self.bridge    = CvBridge()
-        self.rgb_img   = np.zeros((480,640,3),np.uint8)
-        self.depth_img = np.zeros((480,640))
+        self.rgb_img   = np.zeros((720,1280,3),np.uint8)
+        self.depth_img = np.zeros((720,1280))
         self.xypoints = np.array([0,0,0,0,0,0,0,0], dtype = np.int64)
         self.clr_list = []
+        self.clr_poses= [] 
 
-        # self.sub_rgb = Subscriber('/camera/rgb/image_rect_color', Image)
-        self.sub_rgb = Subscriber('/camera/color/image_raw', Image)
+        self.sub_rgb = Subscriber('/camera/rgb/image_rect_color', Image)
+        # self.sub_rgb = Subscriber('/camera/color/image_raw', Image)
         self.sub_depth = Subscriber('/camera/depth/image_rect_raw', Image)
 
         self.sub = message_filters.ApproximateTimeSynchronizer([self.sub_rgb, self.sub_depth], queue_size=10, slop=0.5)
@@ -69,6 +73,19 @@ class ObjectDetector:
         self.pub = rospy.Publisher('/camera/object_track', PoseStamped, queue_size = 1)
         self.pub_detect = rospy.Publisher('/camera/object_detect', Image, queue_size = 1)
 
+        self.serv = rospy.Service("/get_obj_clr", GetObject, self.get_obj)
+
+    def get_obj(self,req):
+        if req.color == 'red':
+            print("RED")
+
+            clr_obj = self.clr_list[0]
+            
+            if clr_obj.poses:
+                clr_obj.poses.header.frame_id = 'camera_depth_optical_frame'
+                clr_obj.poses.header.stamp = rospy.Time(0)
+
+            return (True,clr_obj.poses)
 
     def callback(self,img,depth):
         try:
@@ -81,7 +98,7 @@ class ObjectDetector:
                     self.detect_object(clr)
                 
                 # TODO: why only self.clr_list[0]
-                self.pub_xyz(self.clr_list[0])
+                # self.pub_xyz(self.clr_list[0])
 
         except CvBridgeError as e:
                 print(e)
@@ -104,55 +121,59 @@ class ObjectDetector:
         else:
             contours, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
+        # clear poses for this color
+        color_obj.poses.poses.clear()
+
         for i, c in enumerate(contours):
  
             area = cv2.contourArea(c)
-            # print(area)
+            center = [0.00,0.00]
             
             # TODO: if area < 1000 or area > 50000:
-            if area < 1000 or 50000 < area:
-                continue
-            
-            # cv.minAreaRect returns:
-            # (center(x, y), (width, height), angle of rotation) = cv2.minAreaRect(c)
-            rect = cv2.minAreaRect(c)
-            box = cv2.boxPoints(rect)
-            box = np.int0(box)
-            
-            # Retrieve the key parameters of the rotated bounding box
-            center = (int(rect[0][0]),int(rect[0][1])) 
-            width = int(rect[1][0])
-            height = int(rect[1][1])
-            angle = int(rect[2])
-            angle = math.radians(angle)
-            
-            shape = "unidentified"
-            ar = width / float(height)
-            
-            if width < height:
-                angle = 1.5708 - angle
-            else:
-                angle = -angle
+            # if area < 600 or area > 50000:
+                # continue
 
-            if ar >= 0.85 and ar <= 1.15:
-                shape = "square"
-                angle = 1.5708
-            else:
-                shape = "rectangle"
-                    
-            label = " Angle: " + str(angle) + " deg,"+str(center)
-            # label = " Angle: " + str(angle) + " deg,"+str(shape)
-            textbox = cv2.rectangle(img, (center[0]-35, center[1]-25), 
-                (center[0] + 295, center[1] + 10), (255,255,255), -1)
-            cv2.putText(img, label, (center[0]-50, center[1]), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 1, cv2.LINE_AA)
-            cv2.drawContours(img,[box],0,(0,0,255),2)
 
-            self.xypoints[0] = center[0]
-            self.xypoints[1] = center[1]
-            self.angle= angle
+            # calc only if area is big enuff
+            if area > 600 and area < 50000:
+                
+                print("area: "+str(area))
+                # cv.minAreaRect returns:
+                # (center(x, y), (width, height), angle of rotation) = cv2.minAreaRect(c)
+                rect = cv2.minAreaRect(c)
+                box = cv2.boxPoints(rect)
+                box = np.int0(box)
+                
+                # Retrieve the key parameters of the rotated bounding box
+                center = (int(rect[0][0]),int(rect[0][1])) 
+                width = int(rect[1][0])
+                height = int(rect[1][1])
+                angle = int(rect[2])
+                angle = math.radians(angle)
+                
+                shape = "unidentified"
+                ar = width / float(height)
+                
+                if width < height:
+                    angle = 1.5708 - angle
+                else:
+                    angle = -angle
 
-            self.calc_obj_pos(color_obj)
+                if ar >= 0.85 and ar <= 1.15:
+                    shape = "square"
+                    angle = 1.5708
+                else:
+                    shape = "rectangle"
+                        
+                label = " Angle: " + str(angle) + " deg,"+str(center)
+                # label = " Angle: " + str(angle) + " deg,"+str(shape)
+                textbox = cv2.rectangle(img, (center[0]-35, center[1]-25), 
+                    (center[0] + 295, center[1] + 10), (255,255,255), -1)
+                cv2.putText(img, label, (center[0]-50, center[1]), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 1, cv2.LINE_AA)
+                cv2.drawContours(img,[box],0,(0,0,255),2)
+
+                self.calc_obj_pos(color_obj,center[0],center[1],angle)
             
         try:
             self.pub_detect.publish(self.bridge.cv2_to_imgmsg(img, "bgr8"))
@@ -162,12 +183,12 @@ class ObjectDetector:
         cv2.imshow('Output Image', img)
         cv2.waitKey(1)
 
-    def calc_obj_pos(self,color_obj):
+    def calc_obj_pos(self,color_obj,u,v,angle):
         cx,cy = 320, 240 
-        fx,fy = 640, 480
+        fx,fy = 1280, 720
 
-        u = self.xypoints[0]
-        v = self.xypoints[1]
+        # u = self.xypoints[0]
+        # v = self.xypoints[1]
 
         print(u,v)
         z = self.depth_img[int(v)][int(u)]
@@ -176,11 +197,13 @@ class ObjectDetector:
         x = (u-cx)*(z/fx)
         y = (v-cy)*(z/fy)
 
-        color_obj.xyz[0] = x
-        color_obj.xyz[1] = y
-        color_obj.xyz[2] = z
+        pose = Pose()
+        pose.position.x = x/1000
+        pose.position.y = y/1000
+        pose.position.z = z/1000
+        pose.orientation.w = angle
 
-        color_obj.xyz = color_obj.xyz/1000
+        color_obj.poses.poses.append(pose)
 
         print(x/1000,y/1000,z/1000)
 
