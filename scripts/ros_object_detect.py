@@ -15,7 +15,7 @@ import imutils
 import math
 
 class ColorObj:
-    def __init__(self,name,low_r=np.array([0,0,0],np.uint8),high_r=np.array([0,0,0],np.uint8),low_c=None,high_c=None):
+    def __init__(self,name,low_r,high_r,low_c=None,high_c=None):
         self.low_r = low_r
         self.high_r = high_r
 
@@ -76,16 +76,24 @@ class ObjectDetector:
         self.serv = rospy.Service("/get_obj_clr", GetObject, self.get_obj)
 
     def get_obj(self,req):
-        if req.color == 'red':
-            print("RED")
 
-            clr_obj = self.clr_list[0]
+        for clr in self.clr_list:
+            if clr.name == req.color:
+               if clr.poses:
+                   clr.poses.header.frame_id = 'camera_depth_optical_frame'
+                   clr.poses.header.stamp = rospy.Time(0)
+                   return (True,clr.poses)
+
+        return(False, PoseArray())
+        # if req.color == 'red':
+        #     print("RED")
             
-            if clr_obj.poses:
-                clr_obj.poses.header.frame_id = 'camera_depth_optical_frame'
-                clr_obj.poses.header.stamp = rospy.Time(0)
+            # clr_obj = self.clr_list[0]
+            
+            # if clr_obj.poses:
+            #     clr_obj.poses.header.frame_id = 'camera_depth_optical_frame'
+            #     clr_obj.poses.header.stamp = rospy.Time(0)
 
-            return (True,clr_obj.poses)
 
     def callback(self,img,depth):
         try:
@@ -112,6 +120,7 @@ class ObjectDetector:
         frame = self.rgb_img
 
         img = color_obj.process_color(frame)
+        cv2.imshow(color_obj.name, img)
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, bw = cv2.threshold(gray, 50, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
@@ -180,12 +189,13 @@ class ObjectDetector:
         except CvBridgeError as e:
             print(e)
 
-        cv2.imshow('Output Image', img)
+        # cv2.imshow(color_obj.name, img)
         cv2.waitKey(1)
 
     def calc_obj_pos(self,color_obj,u,v,angle):
         cx,cy = 320, 240 
-        fx,fy = 1280, 720
+        # fx,fy = 1280, 720
+        fx,fy = 640, 480
 
         # u = self.xypoints[0]
         # v = self.xypoints[1]
@@ -233,18 +243,24 @@ if __name__=='__main__':
         # low_r  = np.array([0,45,142],np.uint8)
         # high_r = np.array([180,255,255],np.uint8)
 
-        low_r  = np.array([0,150,70],np.uint8)
-        high_r = np.array([180,255,255],np.uint8)
+        low_r  = np.array([0,50,50],np.uint8)
+        high_r = np.array([10,255,255],np.uint8)
+
+        low_b  = np.array([100,150,0],np.uint8)
+        high_b = np.array([140,255,255],np.uint8)
         
-        low_c  = np.array([155,50,50],np.uint8)
+        low_c  = np.array([170,50,50],np.uint8)
         high_c = np.array([180,255,255],np.uint8)
 
         red = ColorObj("red",low_r,high_r,low_c,high_c)
+        # red = ColorObj("red",low_c,high_c)
+        blue = ColorObj("blue",low_b,high_b)
 
         obj_det = ObjectDetector()
 
         # TODO: only can detect red colour object?
         obj_det.add_color_obj(red)
+        obj_det.add_color_obj(blue)
 
         rospy.spin()
 
