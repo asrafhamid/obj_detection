@@ -70,12 +70,23 @@ class ObjectDetector:
         self.sub = message_filters.ApproximateTimeSynchronizer([self.sub_rgb, self.sub_depth], queue_size=10, slop=0.5)
         self.sub.registerCallback(self.callback)
 
-        self.pub = rospy.Publisher('/camera/object_track', PoseStamped, queue_size = 1)
         self.pub_detect = rospy.Publisher('/camera/object_detect', Image, queue_size = 1)
 
         self.serv = rospy.Service("/get_obj_clr", GetObject, self.get_obj)
 
+
     def get_obj(self,req):
+        if req.color == 'all':
+            print("ALL")
+            poses = PoseArray()
+            
+            for clr in self.clr_list:
+                if clr.poses:
+                    poses.header.frame_id = 'camera_depth_optical_frame'
+                    poses.header.stamp = rospy.Time(0)
+                    poses.poses += clr.poses.poses
+
+            return(True, poses)
 
         for clr in self.clr_list:
             if clr.name == req.color:
@@ -85,14 +96,6 @@ class ObjectDetector:
                    return (True,clr.poses)
 
         return(False, PoseArray())
-        # if req.color == 'red':
-        #     print("RED")
-            
-            # clr_obj = self.clr_list[0]
-            
-            # if clr_obj.poses:
-            #     clr_obj.poses.header.frame_id = 'camera_depth_optical_frame'
-            #     clr_obj.poses.header.stamp = rospy.Time(0)
 
 
     def callback(self,img,depth):
@@ -105,9 +108,6 @@ class ObjectDetector:
                     # create a rectangle over object, sets obj position and orientation
                     self.detect_object(clr)
                 
-                # TODO: why only self.clr_list[0]
-                # self.pub_xyz(self.clr_list[0])
-
         except CvBridgeError as e:
                 print(e)
     
@@ -138,10 +138,6 @@ class ObjectDetector:
             area = cv2.contourArea(c)
             center = [0.00,0.00]
             
-            # TODO: if area < 1000 or area > 50000:
-            # if area < 600 or area > 50000:
-                # continue
-
 
             # calc only if area is big enuff
             if area > 600 and area < 50000:
@@ -217,20 +213,6 @@ class ObjectDetector:
 
         print(x/1000,y/1000,z/1000)
 
-
-    def pub_xyz(self,clr):
-
-        posestamp = PoseStamped()
-        posestamp.header.frame_id= 'camera_depth_optical_frame'
-        posestamp.header.stamp= rospy.Time(0)
-        posestamp.pose.position.x = clr.xyz[0]
-        posestamp.pose.position.y = clr.xyz[1]
-        posestamp.pose.position.z = clr.xyz[2]
-        posestamp.pose.orientation.w = self.angle
-
-        self.pub.publish(posestamp)
-
-
         
 if __name__=='__main__':
     try:
@@ -253,12 +235,10 @@ if __name__=='__main__':
         high_c = np.array([180,255,255],np.uint8)
 
         red = ColorObj("red",low_r,high_r,low_c,high_c)
-        # red = ColorObj("red",low_c,high_c)
         blue = ColorObj("blue",low_b,high_b)
 
         obj_det = ObjectDetector()
 
-        # TODO: only can detect red colour object?
         obj_det.add_color_obj(red)
         obj_det.add_color_obj(blue)
 
