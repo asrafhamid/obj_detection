@@ -8,10 +8,8 @@ from sensor_msgs.msg import Image
 import message_filters
 from message_filters import Subscriber
 from cv_bridge import CvBridge, CvBridgeError
-from geometry_msgs.msg import PointStamped, PoseStamped, Pose
-from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import Pose, PoseArray
 from obj_detection.srv import GetObject
-import imutils
 import math
 
 class ColorObj:
@@ -120,7 +118,7 @@ class ObjectDetector:
         frame = self.rgb_img
 
         img = color_obj.process_color(frame)
-        cv2.imshow(color_obj.name, img)
+        # cv2.imshow(color_obj.name, img)
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, bw = cv2.threshold(gray, 50, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
@@ -142,7 +140,7 @@ class ObjectDetector:
             # calc only if area is big enuff
             if area > 600 and area < 50000:
                 
-                print("area: "+str(area))
+                # print("area: "+str(area))
                 # cv.minAreaRect returns:
                 # (center(x, y), (width, height), angle of rotation) = cv2.minAreaRect(c)
                 rect = cv2.minAreaRect(c)
@@ -172,16 +170,16 @@ class ObjectDetector:
                         
                 label = " Angle: " + str(angle) + " deg,"+str(center)
                 # label = " Angle: " + str(angle) + " deg,"+str(shape)
-                textbox = cv2.rectangle(img, (center[0]-35, center[1]-25), 
-                    (center[0] + 295, center[1] + 10), (255,255,255), -1)
-                cv2.putText(img, label, (center[0]-50, center[1]), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 1, cv2.LINE_AA)
-                cv2.drawContours(img,[box],0,(0,0,255),2)
+                # textbox = cv2.rectangle(frame, (center[0]-35, center[1]-25),
+                #     (center[0] + 295, center[1] + 10), (255,255,255), -1)
+                # cv2.putText(frame, label, (center[0]-50, center[1]),
+                #     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 1, cv2.LINE_AA)
+                cv2.drawContours(frame,[box],0,(0,0,255),2)
 
                 self.calc_obj_pos(color_obj,center[0],center[1],angle)
             
         try:
-            self.pub_detect.publish(self.bridge.cv2_to_imgmsg(img, "bgr8"))
+            self.pub_detect.publish(self.bridge.cv2_to_imgmsg(frame, "bgr8"))
         except CvBridgeError as e:
             print(e)
 
