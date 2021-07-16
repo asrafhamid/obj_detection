@@ -11,6 +11,11 @@ from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import Pose, PoseArray
 from obj_detection.srv import GetObject
 import math
+import tf
+from geometry_msgs.msg import PointStamped, PoseStamped, PoseArray, Pose
+from tf.transformations import quaternion_from_euler, euler_from_quaternion
+import numpy.ma as ma
+
 
 class ColorObj:
     def __init__(self,name,low_r,high_r,low_c=None,high_c=None):
@@ -61,17 +66,31 @@ class ObjectDetector:
         self.clr_list = []
         self.clr_poses= [] 
 
-        self.sub_rgb = Subscriber('/camera/rgb/image_rect_color', Image)
-        # self.sub_rgb = Subscriber('/camera/color/image_raw', Image)
-        self.sub_depth = Subscriber('/camera/depth/image_rect_raw', Image)
+        # self.sub_rgb = Subscriber('/camera/rgb/image_rect_color', Image)
+        self.sub_rgb = Subscriber('/camera/color/image_raw', Image)
+        # change: use aligned depth to color to get correct depth 
+        self.sub_depth = Subscriber('/camera/aligned_depth_to_color/image_raw', Image)
 
         self.sub = message_filters.ApproximateTimeSynchronizer([self.sub_rgb, self.sub_depth], queue_size=10, slop=0.5)
         self.sub.registerCallback(self.callback)
 
         self.pub_detect = rospy.Publisher('/camera/object_detect', Image, queue_size = 1)
+        self.pub_tf = rospy.Publisher('/object_tf', PoseArray, queue_size = 1)
 
         self.serv = rospy.Service("/get_obj_clr", GetObject, self.get_obj)
 
+
+    def get_tf_obj(self):
+        # print("ALL")
+        poses = PoseArray()
+        
+        for clr in self.clr_list:
+            if clr.poses:
+                poses.header.frame_id = 'camera_depth_frame'
+                poses.header.stamp = rospy.Time(0)
+                poses.poses += clr.poses.poses
+
+        self.pub_tf.publish(poses)
 
     def get_obj(self,req):
         if req.color == 'all':
@@ -79,8 +98,8 @@ class ObjectDetector:
             poses = PoseArray()
             
             for clr in self.clr_list:
-                if clr.poses:
-                    poses.header.frame_id = 'camera_depth_optical_frame'
+                if clr.poses.poses:
+                    poses.header.frame_id = 'camera_depth_frame'
                     poses.header.stamp = rospy.Time(0)
                     poses.poses += clr.poses.poses
 
@@ -88,8 +107,8 @@ class ObjectDetector:
 
         for clr in self.clr_list:
             if clr.name == req.color:
-               if clr.poses:
-                   clr.poses.header.frame_id = 'camera_depth_optical_frame'
+               if clr.poses.poses:
+                   clr.poses.header.frame_id = 'camera_depth_frame'
                    clr.poses.header.stamp = rospy.Time(0)
                    return (True,clr.poses)
 
@@ -154,29 +173,40 @@ class ObjectDetector:
                 angle = int(rect[2])
                 angle = math.radians(angle)
                 
-                shape = "unidentified"
+                shape = "na"
                 ar = width / float(height)
-                
-                if width < height:
-                    angle = 1.5708 - angle
-                else:
-                    angle = -angle
 
-                if ar >= 0.85 and ar <= 1.15:
-                    shape = "square"
-                    angle = 1.5708
+                # offset = 
+
+                if width < height:
+                    angle = angle - 1.5708
                 else:
-                    shape = "rectangle"
-                        
-                label = " Angle: " + str(angle) + " deg,"+str(center)
-                # label = " Angle: " + str(angle) + " deg,"+str(shape)
+                    angle = angle
+
+                # check if circle
+                approx = cv2.approxPolyDP(c,0.01*cv2.arcLength(c,True),True)
+                # print("contour len: {}".format(len(approx)))
+                k = cv2.isContourConvex(approx)
+                if k:
+                    # print("circle")
+                    angle = 1.5708
+                    shape = "circle"
+                else:
+                    shape = "rect"
+
+                label = "Angle: {:.2f}, Shape: {}".format(angle,shape)
                 # textbox = cv2.rectangle(frame, (center[0]-35, center[1]-25),
                 #     (center[0] + 295, center[1] + 10), (255,255,255), -1)
-                # cv2.putText(frame, label, (center[0]-50, center[1]),
-                #     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 1, cv2.LINE_AA)
+                cv2.putText(frame, label, (center[0]-50, center[1]),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 1, cv2.LINE_AA)
+
+                red = [0,0,255]
+
+                cv2.circle(frame, (center[0],center[1]), 1, red, -1)
                 cv2.drawContours(frame,[box],0,(0,0,255),2)
 
                 self.calc_obj_pos(color_obj,center[0],center[1],angle)
+                self.get_tf_obj()
             
         try:
             self.pub_detect.publish(self.bridge.cv2_to_imgmsg(frame, "bgr8"))
@@ -187,15 +217,29 @@ class ObjectDetector:
         cv2.waitKey(1)
 
     def calc_obj_pos(self,color_obj,u,v,angle):
-        cx,cy = 320, 240 
-        # fx,fy = 1280, 720
-        fx,fy = 640, 480
-
-        # u = self.xypoints[0]
-        # v = self.xypoints[1]
+        cx,cy = 333.1079, 243.9019
+        fx,fy = 616.889, 617.045
 
         print(u,v)
-        z = self.depth_img[int(v)][int(u)]
+        z = self.depth_img[int(v),int(u)]
+
+        v = int(v)
+        u = int(u)
+        # c = 60
+        
+        mx = ma.masked_array(self.depth_img, mask=self.depth_img==0)
+        mx.min(1)
+        z = mx[v,u]
+        # z_arr = mx[v-c:v+c,u-c:u+c]
+        print("v: {}, u: {}".format(int(v) ,int(u)))
+        # print("max:{}, min:{}, real: {}".format(np.max(z_arr),np.min(z_arr),z))
+
+        # try:
+        #     # print("---",z)
+        #     print("max:{}, min:{}, real: {}".format(np.max(z_arr),np.min(z_arr),z))
+        # except ValueError:  #raised if `z` is empty. Why z can be empty?
+        #     pass
+
 
         # converted x,y 
         x = (u-cx)*(z/fx)
@@ -205,16 +249,28 @@ class ObjectDetector:
         pose.position.x = x/1000
         pose.position.y = y/1000
         pose.position.z = z/1000
-        pose.orientation.w = angle
+        # pose.orientation.w = angle
+
+        rot = quaternion_from_euler(0,0,angle)
+
+        pose.orientation.x = rot[0]
+        pose.orientation.y = rot[1]
+        pose.orientation.z = rot[2]
+        pose.orientation.w = rot[3]
 
         color_obj.poses.poses.append(pose)
 
-        print(x/1000,y/1000,z/1000)
+
+        # print(x/1000,y/1000,z/1000)
+        print("x: {:.4f}, y: {:.4f}, z: {:.4f}".format(x/1000,y/1000,z/1000))
 
         
 if __name__=='__main__':
     try:
         rospy.init_node('object_detector', anonymous=True)
+        # listener = tf.TransformListener()
+        # listener.waitForTransform("/base_link", "/camera_link", rospy.Time(0),rospy.Duration(4.0))
+
 
         #Notes about HSV Values:
         # H: Hue        ----- ranges from 0 to 180
