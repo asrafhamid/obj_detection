@@ -137,7 +137,6 @@ class ObjectDetector:
         frame = self.rgb_img
 
         img = color_obj.process_color(frame)
-        # cv2.imshow(color_obj.name, img)
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, bw = cv2.threshold(gray, 50, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
@@ -151,7 +150,6 @@ class ObjectDetector:
         color_obj.poses.poses.clear()
 
         for i, c in enumerate(contours):
- 
             area = cv2.contourArea(c)
             center = [0.00,0.00]
             
@@ -159,9 +157,7 @@ class ObjectDetector:
             # calc only if area is big enuff
             if area > 600 and area < 50000:
                 
-                # print("area: "+str(area))
-                # cv.minAreaRect returns:
-                # (center(x, y), (width, height), angle of rotation) = cv2.minAreaRect(c)
+                , height), angle of rotation) = cv2.minAreaRect(c)
                 rect = cv2.minAreaRect(c)
                 box = cv2.boxPoints(rect)
                 box = np.int0(box)
@@ -183,11 +179,9 @@ class ObjectDetector:
                     angle = angle
 
                 # check if circle
-                approx = cv2.approxPolyDP(c,0.01*cv2.arcLength(c,True),True)
-                # print("contour len: {}".format(len(approx)))
-                k = cv2.isContourConvex(approx)
-                if k:
-                    # print("circle")
+                approx = cv2.approxPolyDP(c,0.04*cv2.arcLength(c,True),True)
+                k = len(approx)
+                if k>=6:
                     angle = 1.5708
                     shape = "circle"
                 else:
@@ -219,27 +213,16 @@ class ObjectDetector:
         cx,cy = 333.1079, 243.9019
         fx,fy = 616.889, 617.045
 
-        print(u,v)
         z = self.depth_img[int(v),int(u)]
 
         v = int(v)
         u = int(u)
-        # c = 60
         
         mx = ma.masked_array(self.depth_img, mask=self.depth_img==0)
         mx.min(1)
         z = mx[v,u]
-        # z_arr = mx[v-c:v+c,u-c:u+c]
         print("v: {}, u: {}".format(int(v) ,int(u)))
-        # print("max:{}, min:{}, real: {}".format(np.max(z_arr),np.min(z_arr),z))
-
-        # try:
-        #     # print("---",z)
-        #     print("max:{}, min:{}, real: {}".format(np.max(z_arr),np.min(z_arr),z))
-        # except ValueError:  #raised if `z` is empty. Why z can be empty?
-        #     pass
-
-
+ 
         # converted x,y 
         x = (u-cx)*(z/fx)
         y = (v-cy)*(z/fy)
@@ -248,7 +231,6 @@ class ObjectDetector:
         pose.position.x = x/1000
         pose.position.y = y/1000
         pose.position.z = z/1000
-        # pose.orientation.w = angle
 
         rot = quaternion_from_euler(0,0,angle)
 
@@ -259,8 +241,6 @@ class ObjectDetector:
 
         color_obj.poses.poses.append(pose)
 
-
-        # print(x/1000,y/1000,z/1000)
         print("x: {:.4f}, y: {:.4f}, z: {:.4f}".format(x/1000,y/1000,z/1000))
 
         
