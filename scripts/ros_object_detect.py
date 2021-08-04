@@ -176,10 +176,9 @@ class ObjectDetector:
                 shape = "na"
                 ar = width / float(height)
 
-                # offset = 
 
                 if width < height:
-                    angle = angle - 1.5708
+                    angle = angle + 1.5708
                 else:
                     angle = angle
 
