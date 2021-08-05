@@ -11,7 +11,6 @@ from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import Pose, PoseArray
 from obj_detection.srv import GetObject
 import math
-import tf
 from geometry_msgs.msg import PointStamped, PoseStamped, PoseArray, Pose
 from tf.transformations import quaternion_from_euler, euler_from_quaternion
 import numpy.ma as ma
@@ -25,7 +24,6 @@ class ColorObj:
         self.low_c = low_c
         self.high_c = high_c
 
-        # self.xyz = np.array([0.0,0.0,0.0])
         self.name = name
         self.color = None
         self.poses = PoseArray()
@@ -47,11 +45,8 @@ class ColorObj:
         if self.low_c is not None:
             color = cv2.inRange(hsv, self.low_c, self.high_c)
             self.color = self.color + color
-            # self.color = cv2.erode(self.color, None, iterations=2)
-            # self.color = cv2.dilate(self.color, None, iterations=2)
 
         res_r = cv2.bitwise_and(frame,frame, mask= self.color)
-        # cv2.imshow('Red',res_r)
         
         return res_r
 
@@ -81,7 +76,6 @@ class ObjectDetector:
 
 
     def get_tf_obj(self):
-        # print("ALL")
         poses = PoseArray()
         
         for clr in self.clr_list:
@@ -122,7 +116,6 @@ class ObjectDetector:
 
             if self.clr_list:
                 for clr in self.clr_list:
-                    # create a rectangle over object, sets obj position and orientation
                     self.detect_object(clr)
                 
         except CvBridgeError as e:
@@ -134,17 +127,19 @@ class ObjectDetector:
 
 
     def detect_object(self,color_obj):
+        '''creates bounding box over object, set position and orientation'''
         frame = self.rgb_img
 
         img = color_obj.process_color(frame)
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        _, bw = cv2.threshold(gray, 50, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        _, bw = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
 
         if cv2.__version__ == "3.2.0":
-            _,contours, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            _,contours, _ = cv2.findContours(bw, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
         else:
-            contours, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            contours, _ = cv2.findContours(bw, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
 
         # clear poses for this color
         color_obj.poses.poses.clear()
@@ -157,8 +152,8 @@ class ObjectDetector:
             # calc only if area is big enuff
             if area > 600 and area < 50000:
                 
-                , height), angle of rotation) = cv2.minAreaRect(c)
                 rect = cv2.minAreaRect(c)
+
                 box = cv2.boxPoints(rect)
                 box = np.int0(box)
                 
@@ -172,25 +167,28 @@ class ObjectDetector:
                 shape = "na"
                 ar = width / float(height)
 
-
                 if width < height:
                     angle = angle + 1.5708
                 else:
                     angle = angle
 
-                # check if circle
-                approx = cv2.approxPolyDP(c,0.04*cv2.arcLength(c,True),True)
+                approx = cv2.approxPolyDP(c,0.01*cv2.arcLength(c,True),True)
                 k = len(approx)
-                if k>=6:
+
+                # check if circle
+                if k>=10 and ar>0.9 and ar<1.1:
                     angle = 1.5708
                     shape = "circle"
                 else:
                     shape = "rect"
 
-                label = "Angle: {:.2f}, Shape: {}".format(angle,shape)
-                # textbox = cv2.rectangle(frame, (center[0]-35, center[1]-25),
-                #     (center[0] + 295, center[1] + 10), (255,255,255), -1)
-                cv2.putText(frame, label, (center[0]-50, center[1]),
+                label_shape = "Shape: {} ".format(shape)
+                label_angle= "Angle: {:.2f} ".format(angle)
+
+                cv2.putText(frame, label_shape, (center[0]-50, center[1]),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 1, cv2.LINE_AA)
+
+                cv2.putText(frame, label_angle, (center[0]-50, center[1]-30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 1, cv2.LINE_AA)
 
                 red = [0,0,255]
@@ -206,7 +204,7 @@ class ObjectDetector:
         except CvBridgeError as e:
             print(e)
 
-        # cv2.imshow(color_obj.name, img)
+        # cv2.imshow(color_obj.name, bw)
         cv2.waitKey(1)
 
     def calc_obj_pos(self,color_obj,u,v,angle):
@@ -247,10 +245,6 @@ class ObjectDetector:
 if __name__=='__main__':
     try:
         rospy.init_node('object_detector', anonymous=True)
-        # listener = tf.TransformListener()
-        # listener.waitForTransform("/base_link", "/camera_link", rospy.Time(0),rospy.Duration(4.0))
-
-
         #Notes about HSV Values:
         # H: Hue        ----- ranges from 0 to 180
         # S: Saturation ----- ranges from 0 to 255
@@ -261,7 +255,7 @@ if __name__=='__main__':
         low_r  = np.array([0,50,50],np.uint8)
         high_r = np.array([10,255,255],np.uint8)
 
-        low_b  = np.array([100,150,0],np.uint8)
+        low_b  = np.array([90,150,0],np.uint8)
         high_b = np.array([140,255,255],np.uint8)
         
         low_c  = np.array([170,50,50],np.uint8)
